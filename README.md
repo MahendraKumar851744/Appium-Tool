@@ -163,3 +163,5 @@ DELETE /api/v1/apps/{package_id}
 ```powershell
 pytest
 ```
+
+Completed and pushed everything finally.
