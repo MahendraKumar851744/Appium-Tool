@@ -1,0 +1,15 @@
+{
+  "name": "appium-tool-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "First-launch Android UI discovery with Appium",
+  "scripts": {
+    "appium": "appium --base-path /",
+    "driver:install": "appium driver install uiautomator2",
+    "driver:list": "appium driver list --installed"
+  },
+  "devDependencies": {
+    "appium": "3.5.2",
+    "appium-uiautomator2-driver": "8.1.1"
+  }
+}

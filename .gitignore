@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+.env
+.runtime/
+artifacts/
+assets/apps/*.apk
+tooling/appium/node_modules/

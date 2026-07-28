@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appium-tool"
+version = "1.0.0"
+description = "Authenticated REST and MCP service for Appium automation"
+requires-python = ">=3.10"
+dependencies = [
+    "Appium-Python-Client==5.3.1",
+    "Pillow==11.3.0",
+    "mcp>=1.27,<2",
+    "requests==2.34.2",
+    "starlette>=0.46,<1",
+    "uvicorn>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.4,<9",
+]
+
+[project.scripts]
+appium-tool = "appium_tool.__main__:main"
+appium-tool-context = "appium_tool.exploration.llm_context:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
