@@ -270,6 +270,7 @@ def create_app(
         registry,
         sessions=sessions,
         contexts=contexts,
+        runtime=runtime,
         allowed_hosts=settings.allowed_hosts,
     )
     mcp_app = mcp_server.streamable_http_app()

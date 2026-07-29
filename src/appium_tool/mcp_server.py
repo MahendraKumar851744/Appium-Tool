@@ -9,6 +9,7 @@ from appium_tool.auth import current_principal
 from appium_tool.exploration.actions import SessionManager
 from appium_tool.exploration.context_export import ScreenContextExporter
 from appium_tool.registry import ToolRegistry
+from appium_tool.runtime import RuntimeManager
 from appium_tool.types import JsonObject
 
 
@@ -17,6 +18,7 @@ def create_mcp_server(
     *,
     sessions: SessionManager,
     contexts: ScreenContextExporter,
+    runtime: RuntimeManager,
     allowed_hosts: tuple[str, ...],
 ) -> FastMCP:
     """Generate MCP tools from the same registry used by the REST interface."""
@@ -77,6 +79,67 @@ def create_mcp_server(
             }
         )
 
+    @mcp.tool(
+        name="runtime_status",
+        description=(
+            "Return Android SDK, emulator, Appium server, connected device, "
+            "and managed runtime status. Requires the admin token."
+        ),
+    )
+    def runtime_status() -> JsonObject:
+        _require_admin_principal()
+        return runtime.status()
+
+    @mcp.tool(
+        name="start_runtime",
+        description=(
+            "Start the managed Android runtime. By default this starts the "
+            "configured emulator and local Appium server. Returns a job_id; "
+            "poll get_runtime_job until status is succeeded or failed. "
+            "Requires the admin token."
+        ),
+    )
+    def start_runtime(
+        start_emulator: bool = True,
+        device_id: str | None = None,
+    ) -> JsonObject:
+        _require_admin_principal()
+        payload: JsonObject = {"start_emulator": start_emulator}
+        if device_id:
+            payload["device_id"] = device_id
+        job, reused = runtime.start(payload)
+        return {**job, "reused": reused}
+
+    @mcp.tool(
+        name="get_runtime_job",
+        description=(
+            "Return status, output, result, or error for a runtime job returned "
+            "by start_runtime. Requires the admin token."
+        ),
+    )
+    def get_runtime_job(job_id: str) -> JsonObject:
+        _require_admin_principal()
+        return runtime.get_job(job_id)
+
+    @mcp.tool(
+        name="stop_runtime",
+        description=(
+            "Stop managed Appium and/or emulator processes started by the "
+            "runtime manager. Requires the admin token."
+        ),
+    )
+    def stop_runtime(
+        stop_appium: bool = True,
+        stop_emulator: bool = True,
+    ) -> JsonObject:
+        _require_admin_principal()
+        return runtime.stop(
+            {
+                "stop_appium": stop_appium,
+                "stop_emulator": stop_emulator,
+            }
+        )
+
     for spec in registry.list():
         mcp.add_tool(
             _action_tool(registry, spec.name),
@@ -113,3 +176,11 @@ def _action_tool(registry: ToolRegistry, tool_name: str):
 
     invoke.__name__ = f"appium_{tool_name}"
     return invoke
+
+
+def _require_admin_principal() -> None:
+    principal = current_principal.get()
+    if principal is None:
+        raise PermissionError("Authenticated MCP request required.")
+    if not principal.has("admin"):
+        raise PermissionError("This MCP tool requires the admin token.")
