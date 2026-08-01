@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -111,10 +112,31 @@ def create_mcp_server(
         return {**job, "reused": reused}
 
     @mcp.tool(
+        name="start_emulator",
+        description=(
+            "Ensure the configured Android emulator and local Appium server "
+            "are ready in one call. This checks runtime_status, starts the "
+            "emulator/Appium runtime when needed, polls the startup job, and "
+            "returns the final runtime status. Use this before open_session. "
+            "Requires the admin token."
+        ),
+    )
+    def start_emulator(
+        timeout_seconds: int = 300,
+        poll_interval_seconds: int = 2,
+    ) -> JsonObject:
+        _require_admin_principal()
+        return _ensure_runtime_ready(
+            runtime,
+            timeout_seconds=timeout_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+        )
+
+    @mcp.tool(
         name="get_runtime_job",
         description=(
             "Return status, output, result, or error for a runtime job returned "
-            "by start_runtime. Requires the admin token."
+            "by start_runtime or start_emulator. Requires the admin token."
         ),
     )
     def get_runtime_job(job_id: str) -> JsonObject:
@@ -184,3 +206,77 @@ def _require_admin_principal() -> None:
         raise PermissionError("Authenticated MCP request required.")
     if not principal.has("admin"):
         raise PermissionError("This MCP tool requires the admin token.")
+
+
+def _ensure_runtime_ready(
+    runtime: RuntimeManager,
+    *,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
+) -> JsonObject:
+    if not isinstance(timeout_seconds, int) or timeout_seconds < 1:
+        raise ValueError("'timeout_seconds' must be a positive integer.")
+    if not isinstance(poll_interval_seconds, int) or poll_interval_seconds < 1:
+        raise ValueError("'poll_interval_seconds' must be a positive integer.")
+
+    initial = runtime.status()
+    if initial.get("ready"):
+        return {
+            "contract": "appium.runtime_ready_result",
+            "schema_version": 1,
+            "status": "ready",
+            "started": False,
+            "reused_job": False,
+            "job": None,
+            "runtime": initial,
+        }
+
+    job, reused = runtime.start({"start_emulator": True})
+    deadline = time.monotonic() + timeout_seconds
+    latest_job = job
+
+    while time.monotonic() < deadline:
+        latest_job = runtime.get_job(str(job["job_id"]))
+        status = latest_job.get("status")
+        if status == "succeeded":
+            final = runtime.status()
+            if not final.get("ready"):
+                raise RuntimeError(
+                    "Runtime startup job succeeded, but no ready compatible "
+                    "Android device is available."
+                )
+            return {
+                "contract": "appium.runtime_ready_result",
+                "schema_version": 1,
+                "status": "ready",
+                "started": True,
+                "reused_job": reused,
+                "job": latest_job,
+                "runtime": final,
+            }
+        if status == "failed":
+            return {
+                "contract": "appium.runtime_ready_result",
+                "schema_version": 1,
+                "status": "failed",
+                "started": True,
+                "reused_job": reused,
+                "job": latest_job,
+                "runtime": runtime.status(),
+                "error": latest_job.get("error"),
+            }
+        time.sleep(poll_interval_seconds)
+
+    return {
+        "contract": "appium.runtime_ready_result",
+        "schema_version": 1,
+        "status": "timeout",
+        "started": True,
+        "reused_job": reused,
+        "job": latest_job,
+        "runtime": runtime.status(),
+        "error": (
+            "Timed out waiting for the Android emulator and Appium runtime "
+            f"to become ready after {timeout_seconds} seconds."
+        ),
+    }
